@@ -28,6 +28,23 @@ from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
+# Explicitly load the .env sitting next to this file, BEFORE building the
+# toolset — otherwise the MongoDB MCP server starts unconfigured and the agent
+# wastes dozens of turns guessing connection strings.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
+
+# Fail loudly and early if the connection string still isn't present, rather
+# than letting the agent flail at runtime.
+if not os.environ.get("MDB_MCP_CONNECTION_STRING"):
+    raise RuntimeError(
+        "MDB_MCP_CONNECTION_STRING is not set. Put it in transport_agent/.env "
+        "(the working mongodb:// string) so the MongoDB MCP server can connect."
+    )
+
 OPTIMIZER_URL = os.environ.get("OPTIMIZER_URL", "http://localhost:8080")
 
 
@@ -77,15 +94,24 @@ def optimize_routes(
 
 # --- Tool 1: MongoDB via the official MCP server ----------------------------
 # Reuses the SAME connection string the seed script and VS Code setup use.
+# tool_filter restricts the agent to ONLY the data tools it needs, so it can't
+# wander into connect / logs / knowledge / atlas-admin tools and loop. The
+# MDB_MCP_DISABLED_TOOLS env var also tells the server not to expose those
+# categories at all (belt and suspenders).
 mongodb_toolset = MCPToolset(
     connection_params=StdioConnectionParams(
         server_params=StdioServerParameters(
             command="npx",
             args=["-y", "mongodb-mcp-server@latest"],
-            env={"MDB_MCP_CONNECTION_STRING": os.environ["MDB_MCP_CONNECTION_STRING"]},
+            env={
+                "MDB_MCP_CONNECTION_STRING": os.environ["MDB_MCP_CONNECTION_STRING"],
+                # Hide everything except core read/write CRUD tools.
+                "MDB_MCP_DISABLED_TOOLS": "atlas,connect,logs,knowledge,export,session",
+            },
         ),
         timeout=60,
     ),
+    tool_filter=["find", "aggregate", "count", "insert-many", "update-many", "list-collections"],
 )
 
 
@@ -103,8 +129,15 @@ You have two tools:
 
 Your reasoning process for every planning request:
 
-1. READ STATE. Use the MongoDB tools to read all documents in `farms` and
-   `road_conditions`. Limit results sensibly.
+0. The database is ALREADY CONNECTED. Do not run diagnostics, do not check
+   logs, do not search any knowledge base, do not list databases or deployments,
+   and do not try to find or fix a connection. Your very first action is to query
+   the `farms` collection in the `agrichain` database with the `find` tool. If a
+   query returns data, the connection is fine — proceed. Never treat an empty or
+   slow result as a connection problem.
+
+1. READ STATE. Use `find` to read the `farms` and `road_conditions` collections
+   in the `agrichain` database. Limit results sensibly.
 
 2. DECIDE WHAT TO INCLUDE. Reason about each farm before sending it to the
    optimizer:
