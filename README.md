@@ -81,14 +81,4 @@ The only edits to *existing* files are in `greenhouse/backend/db.py` and `pipeli
 so conflicts with your teammates' work are minimal. Coordinate the `git mv` restructure
 (step 2) with them first — that's the one change that touches paths everyone references.
 
-## Build sequence (your two weeks)
 
-- **Day 1** — lock `shared/schemas/` (done); MongoDB MCP reads `farms` as the smoke test.
-- **Day 4** — `route-optimizer/` working standalone (swap the skeleton CVRP for full OR-Tools).
-- **Day 6** — wire optimizer as a tool (`optimizer_client.solve`) + write agent reasoning in `agent.py`.
-- **Day 8** — storm re-plan path (`pipeline.replan`) — already scaffolded and tested.
-- **Day 9** — surface the trace + diff in the UI (poll `/api/transport/trace`, `/api/transport/plan/latest`).
-- **Day 11** — harden edge cases (blocked roads, empty plan, optimizer timeout — fallbacks in place).
-- Stretch only with time to spare: driver scheduling, multi-objective tuning, one negotiation exchange.
-- **Never cut the storm re-plan.**
-```
